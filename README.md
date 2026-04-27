@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mira — AI notes taker
 
-## Getting Started
+A clean, focused notes workspace with quick AI assists. Built with Next.js (App Router), React 19, Tailwind 4, and the `@ember-ai-engineering/feedback-widget` package.
 
-First, run the development server:
+## Features
+
+- **Master-detail layout** — sidebar with notes list, search, and folder tabs; main editor area
+- **AI assists** — Summarise, Improve writing, Expand, Suggest title, Suggest tags. Each runs locally with a streaming-text simulation.
+- **Embedded feedback widget** — `@ember-ai-engineering/feedback-widget` is wired into the root layout so reviewers can pin and submit feedback on any element.
+- **Auto-save indicator** — pill in the header shows save state.
+
+## Local development
+
+The widget package is hosted on **GitHub Packages**, which requires a token to install. Generate a Personal Access Token with `read:packages` scope and export it before running `npm install`:
 
 ```bash
+export GITHUB_TOKEN=<your-pat>
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The `.npmrc` reads `${GITHUB_TOKEN}` at install time. The token is never written to disk.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploying to Render
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Add `GITHUB_TOKEN` as an environment variable in your Render service settings (with `read:packages` scope). Render's build step (`npm install`) will pick it up automatically.
 
-## Learn More
+- Build command: `npm run build`
+- Start command: `npm run start`
 
-To learn more about Next.js, take a look at the following resources:
+## Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Next.js 16 (App Router, Turbopack)
+- React 19
+- Tailwind 4
+- TypeScript
+- `@ember-ai-engineering/feedback-widget`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Conventions
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- All UI is client-side; mock data lives in `src/lib/mock-notes.ts`.
+- AI responses are canned, varied, and streamed via `src/lib/mock-ai.ts` — no model calls are made.
+- The widget runs in `logOnly` mode by default. Once a feedback backend exists, swap `logOnly` for `apiUrl={...}` in `src/app/layout.tsx`.

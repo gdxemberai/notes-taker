@@ -1,64 +1,267 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Sidebar } from "@/components/Sidebar";
+import { AIToolbar } from "@/components/AIToolbar";
+import { AIPanel } from "@/components/AIPanel";
+import { runAI } from "@/lib/mock-ai";
+import { SAMPLE_NOTES } from "@/lib/mock-notes";
+import type { AIResult, Note } from "@/lib/types";
+import { FileTextIcon, FolderIcon, SparkleIcon, TagIcon } from "@/lib/icons";
+
+type AIState =
+  | { phase: "loading"; kind: AIResult["kind"] }
+  | { phase: "streaming"; kind: AIResult["kind"]; text: string }
+  | { phase: "done"; result: AIResult }
+  | null;
+
+const FOLDER_LABEL: Record<Note["folder"], string> = {
+  personal: "Personal",
+  work: "Work",
+  ideas: "Ideas",
+  archive: "Archive",
+};
+
+export default function Page() {
+  const [notes, setNotes] = useState<Note[]>(SAMPLE_NOTES);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    SAMPLE_NOTES[0]?.id ?? null
+  );
+  const [saving, setSaving] = useState(false);
+  const [aiState, setAiState] = useState<AIState>(null);
+  const [copied, setCopied] = useState(false);
+  const aiAbortRef = useRef<AbortController | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const selected = useMemo(
+    () => notes.find((n) => n.id === selectedId) ?? null,
+    [notes, selectedId]
+  );
+
+  const updateSelected = useCallback(
+    (patch: Partial<Note>) => {
+      if (!selected) return;
+      setSaving(true);
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === selected.id
+            ? { ...n, ...patch, updatedAt: new Date().toISOString() }
+            : n
+        )
+      );
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaving(false), 600);
+    },
+    [selected]
+  );
+
+  function createNote() {
+    const newNote: Note = {
+      id: `n${Date.now()}`,
+      title: "",
+      content: "",
+      tags: [],
+      folder: "personal",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setNotes((prev) => [newNote, ...prev]);
+    setSelectedId(newNote.id);
+    setAiState(null);
+  }
+
+  function closePanel() {
+    aiAbortRef.current?.abort();
+    aiAbortRef.current = null;
+    setAiState(null);
+  }
+
+  async function runAction(kind: AIResult["kind"]) {
+    if (!selected) return;
+    aiAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    aiAbortRef.current = ctrl;
+
+    setAiState({ phase: "loading", kind });
+    setCopied(false);
+
+    try {
+      const result = await runAI({
+        kind,
+        content: `${selected.title}\n\n${selected.content}`.trim(),
+        signal: ctrl.signal,
+        onChunk: (text) => {
+          setAiState({ phase: "streaming", kind, text });
+        },
+      });
+      if (ctrl.signal.aborted) return;
+      setAiState({ phase: "done", result });
+    } catch {
+      // aborted — fine
+    }
+  }
+
+  function applyResult() {
+    if (aiState?.phase !== "done" || !selected) return;
+    const { kind, content } = aiState.result;
+    if (kind === "title") {
+      updateSelected({ title: content });
+    } else if (kind === "tags") {
+      const tags = content
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      updateSelected({ tags });
+    } else if (kind === "improve" || kind === "expand") {
+      const body = content.includes("\n\n")
+        ? content.split("\n\n").slice(1).join("\n\n").trim()
+        : content;
+      updateSelected({ content: body });
+    } else if (kind === "summary") {
+      const callout = `> Summary: ${content}\n\n`;
+      updateSelected({ content: callout + selected.content });
+    }
+    setAiState(null);
+  }
+
+  function copyResult() {
+    if (aiState?.phase !== "done") return;
+    void navigator.clipboard.writeText(aiState.result.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  useEffect(() => {
+    return () => {
+      aiAbortRef.current?.abort();
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="app-shell">
+      <Sidebar
+        notes={notes}
+        selectedId={selectedId}
+        onSelect={(id) => {
+          setSelectedId(id);
+          setAiState(null);
+        }}
+        onNew={createNote}
+      />
+
+      <main className="main">
+        {selected ? (
+          <>
+            <header className="main-header">
+              <div className="crumb">
+                <FolderIcon style={{ width: 14, height: 14 }} />
+                <span>{FOLDER_LABEL[selected.folder]}</span>
+                <span style={{ color: "var(--ink-300)" }}>/</span>
+                <strong>{selected.title || "Untitled"}</strong>
+              </div>
+              <span className={`save-pill${saving ? " saving" : ""}`}>
+                <span className="dot" />
+                {saving ? "Saving…" : "Saved"}
+              </span>
+            </header>
+
+            <div className={`editor-shell${aiState ? " has-panel" : ""}`}>
+              <section className="editor">
+                <div className="editor-inner">
+                  <AIToolbar
+                    active={
+                      aiState && aiState.phase !== "done"
+                        ? aiState.kind
+                        : aiState?.phase === "done"
+                        ? aiState.result.kind
+                        : null
+                    }
+                    disabled={!selected || aiState?.phase === "loading"}
+                    onRun={runAction}
+                  />
+
+                  <input
+                    className="editor-title"
+                    placeholder="Untitled"
+                    value={selected.title}
+                    onChange={(e) => updateSelected({ title: e.target.value })}
+                  />
+
+                  <div className="editor-meta-row">
+                    <span className="editor-meta-item">
+                      <FileTextIcon /> {selected.content.length} chars
+                    </span>
+                    <span className="editor-meta-item">
+                      <FolderIcon /> {FOLDER_LABEL[selected.folder]}
+                    </span>
+                    {selected.tags.length > 0 && (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          gap: 4,
+                          alignItems: "center",
+                        }}
+                      >
+                        <TagIcon
+                          style={{
+                            width: 13,
+                            height: 13,
+                            color: "var(--ink-500)",
+                          }}
+                        />
+                        {selected.tags.map((t) => (
+                          <span key={t} className="tag-chip">
+                            {t}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </div>
+
+                  <textarea
+                    className="editor-content"
+                    placeholder="Start writing… or pick an AI action above."
+                    value={selected.content}
+                    onChange={(e) => updateSelected({ content: e.target.value })}
+                  />
+                </div>
+              </section>
+
+              {aiState && (
+                <AIPanel
+                  state={aiState}
+                  onClose={closePanel}
+                  onApply={applyResult}
+                  onCopy={copyResult}
+                  applyLabel={
+                    aiState.phase === "done"
+                      ? aiState.result.kind === "title"
+                        ? "Use as title"
+                        : aiState.result.kind === "tags"
+                        ? "Add tags"
+                        : aiState.result.kind === "summary"
+                        ? "Insert as callout"
+                        : "Replace content"
+                      : "Apply"
+                  }
+                  copied={copied}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="empty-state">
+            <span className="empty-glyph">
+              <SparkleIcon />
+            </span>
+            <h2 className="empty-title">Pick a note or start a new one</h2>
+            <p className="empty-sub">
+              Mira pairs your notes with quick AI assists — summarise, improve,
+              tag, expand. Try one on any note in the sidebar.
+            </p>
+          </div>
+        )}
       </main>
     </div>
   );
