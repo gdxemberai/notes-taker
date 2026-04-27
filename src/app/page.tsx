@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Sidebar } from "@/components/Sidebar";
 import { AIToolbar } from "@/components/AIToolbar";
 import { AIPanel } from "@/components/AIPanel";
@@ -30,8 +32,25 @@ export default function Page() {
   const [saving, setSaving] = useState(false);
   const [aiState, setAiState] = useState<AIState>(null);
   const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const aiAbortRef = useRef<AbortController | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Focus textarea when entering edit mode
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+      // Place cursor at the end
+      const len = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(len, len);
+    }
+  }, [isEditing]);
+
+  // Exit edit mode when switching notes
+  useEffect(() => {
+    setIsEditing(false);
+  }, [selectedId]);
 
   const selected = useMemo(
     () => notes.find((n) => n.id === selectedId) ?? null,
@@ -219,12 +238,42 @@ export default function Page() {
                     )}
                   </div>
 
-                  <textarea
-                    className="editor-content"
-                    placeholder="Start writing… or pick an AI action above."
-                    value={selected.content}
-                    onChange={(e) => updateSelected({ content: e.target.value })}
-                  />
+                  {isEditing ? (
+                    <textarea
+                      ref={textareaRef}
+                      className="editor-content-edit"
+                      placeholder="Start writing… markdown supported (**bold**, *italic*, # heading, > quote, - list)."
+                      value={selected.content}
+                      onChange={(e) =>
+                        updateSelected({ content: e.target.value })
+                      }
+                      onBlur={() => setIsEditing(false)}
+                      rows={16}
+                    />
+                  ) : (
+                    <div
+                      className="editor-content-view"
+                      onClick={() => setIsEditing(true)}
+                      role="textbox"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setIsEditing(true);
+                        }
+                      }}
+                    >
+                      {selected.content ? (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {selected.content}
+                        </ReactMarkdown>
+                      ) : (
+                        <span className="placeholder">
+                          Start writing… or pick an AI action above. Markdown supported.
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </section>
 
